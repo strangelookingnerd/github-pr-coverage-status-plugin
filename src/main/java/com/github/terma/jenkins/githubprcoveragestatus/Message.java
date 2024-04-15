@@ -17,8 +17,9 @@ limitations under the License.
 */
 package com.github.terma.jenkins.githubprcoveragestatus;
 
-import org.apache.commons.httpclient.URIException;
-import org.apache.commons.httpclient.util.URIUtil;
+import org.springframework.web.util.UriUtils;
+
+import java.nio.charset.StandardCharsets;
 
 @SuppressWarnings("WeakerAccess")
 class Message {
@@ -71,11 +72,7 @@ class Message {
         final String color = getColor(yellowThreshold, greenThreshold);
         // dash should be encoded as two dash
         icon = icon.replace("-", "--");
-        try {
-            return String.format(BADGE_TEMPLATE, URIUtil.encodePath(icon), color);
-        } catch (URIException e) {
-            throw new RuntimeException(e);
-        }
+        return String.format(BADGE_TEMPLATE, UriUtils.encodePathSegment(icon, StandardCharsets.UTF_8), color);
     }
 
     private String getColor(int yellowThreshold, int greenThreshold) {

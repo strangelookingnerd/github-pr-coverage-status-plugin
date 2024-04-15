@@ -58,7 +58,7 @@ public class MessageTest {
                 new Message(0, 0).forComment(buildUrl, null, 80, 90, true));
 
         Assert.assertEquals(
-                "[![50% (+50.0%) vs master 0%](https://img.shields.io/badge/coverage-50%25%20(%2B50.0%25)%20vs%20master%200%25-red.svg)](http://terma.com/jenkins/job/ama)",
+                "[![50% (+50.0%) vs master 0%](https://img.shields.io/badge/coverage-50%25%20(+50.0%25)%20vs%20master%200%25-red.svg)](http://terma.com/jenkins/job/ama)",
                 new Message(0.5f, 0).forComment(buildUrl, null, 80, 90, true));
 
         Assert.assertEquals(
@@ -66,7 +66,7 @@ public class MessageTest {
                 new Message(0, 0.5f).forComment(buildUrl, null, 80, 90, true));
 
         Assert.assertEquals(
-                "[![85% (+35.0%) vs master 50%](https://img.shields.io/badge/coverage-85%25%20(%2B35.0%25)%20vs%20master%2050%25-yellow.svg)](http://terma.com/jenkins/job/ama)",
+                "[![85% (+35.0%) vs master 50%](https://img.shields.io/badge/coverage-85%25%20(+35.0%25)%20vs%20master%2050%25-yellow.svg)](http://terma.com/jenkins/job/ama)",
                 new Message(0.85f, 0.5f).forComment(buildUrl, null, 80, 90, true));
     }
 

@@ -20,20 +20,26 @@ package com.github.terma.jenkins.githubprcoveragestatus;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.auth.BasicScheme;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
+import org.apache.hc.client5.http.auth.AuthScope;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.ParseException;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.text.MessageFormat;
 import java.util.List;
 
 import static com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES;
-import static org.apache.commons.httpclient.HttpStatus.SC_BAD_REQUEST;
+import static org.apache.hc.core5.http.HttpStatus.SC_BAD_REQUEST;
 
 @SuppressWarnings("WeakerAccess")
 public class SonarMasterCoverageRepository implements MasterCoverageRepository {
@@ -52,9 +58,17 @@ public class SonarMasterCoverageRepository implements MasterCoverageRepository {
         this.sonarUrl = sonarUrl;
         this.login = login;
         this.buildLog = buildLog;
-        httpClient = new HttpClient();
-        if (login != null) {
-            httpClient.getState().setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(login, password));
+        if (this.login != null) {
+            try {
+                BasicCredentialsProvider provider = new BasicCredentialsProvider();
+                AuthScope scope = new AuthScope(HttpHost.create(sonarUrl));
+                provider.setCredentials(scope, new UsernamePasswordCredentials(login, password.toCharArray()));
+                this.httpClient = HttpClients.custom().setDefaultCredentialsProvider(provider).build();
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            this.httpClient = HttpClients.createDefault();
         }
     }
 
@@ -80,10 +94,9 @@ public class SonarMasterCoverageRepository implements MasterCoverageRepository {
      * @throws SonarProjectRetrievalException if no project could be found or an error occurred during retrieval
      */
     private SonarProject getSonarProject(final String repoName) throws SonarProjectRetrievalException {
-        try {
-            final String searchUri = sonarUrl + SONAR_SEARCH_PROJECTS_API_PATH + "?search=" + repoName;
-            final GetMethod method = executeGetRequest(searchUri);
-            final List<SonarProject> sonarProjects = objectMapper.readValue(method.getResponseBodyAsStream(), new TypeReference<List<SonarProject>>() {
+        final String searchUri = sonarUrl + SONAR_SEARCH_PROJECTS_API_PATH + "?search=" + repoName;
+        try (final CloseableHttpResponse response = executeGetRequest(searchUri)) {
+            final List<SonarProject> sonarProjects = objectMapper.readValue(EntityUtils.toString(response.getEntity()), new TypeReference<List<SonarProject>>() {
             });
 
             if (sonarProjects.isEmpty()) {
@@ -108,25 +121,23 @@ public class SonarMasterCoverageRepository implements MasterCoverageRepository {
      */
     private float getCoverageMeasure(SonarProject project) throws SonarCoverageMeasureRetrievalException {
         final String uri = MessageFormat.format("{0}{1}?componentKey={2}&metricKeys={3}", sonarUrl, SONAR_COMPONENT_MEASURE_API_PATH, URLEncoder.encode(project.getKey()), SONAR_OVERALL_LINE_COVERAGE_METRIC_NAME);
-        try {
-            final GetMethod method = executeGetRequest(uri);
-            String value = JsonUtils.findInJson(method.getResponseBodyAsString(), "component.measures[0].value");
+        try (final CloseableHttpResponse response = executeGetRequest(uri)) {
+            String value = JsonUtils.findInJson(EntityUtils.toString(response.getEntity()), "component.measures[0].value");
             return Float.parseFloat(value) / 100;
         } catch (Exception e) {
             throw new SonarCoverageMeasureRetrievalException(String.format("failed to get coverage measure for sonar project %s - %s", project.getKey(), e.getMessage()), e);
         }
     }
 
-    private GetMethod executeGetRequest(String uri) throws IOException, HttpClientException {
-        final GetMethod method = new GetMethod(uri);
-        if (login != null) {
-            method.getHostAuthState().setAuthScheme(new BasicScheme());
-        }
-        int status = httpClient.executeMethod(method);
+    private CloseableHttpResponse executeGetRequest(String uri) throws IOException, HttpClientException, ParseException {
+        final HttpGet method = new HttpGet(uri);
+
+        CloseableHttpResponse response = (CloseableHttpResponse) httpClient.execute(method);
+        int status = response.getCode();
         if (status >= SC_BAD_REQUEST) {
-            throw new HttpClientException(uri, status, method.getResponseBodyAsString());
+            throw new HttpClientException(uri, status, EntityUtils.toString(response.getEntity()));
         }
-        return method;
+        return response;
     }
 
     private void log(String format, Object... arguments) {
